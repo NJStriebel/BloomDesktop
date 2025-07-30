@@ -21,6 +21,8 @@ import { css } from "@emotion/react";
 import { kMotionToolId } from "../toolIds";
 import { RequiresSubscriptionOverlayWrapper } from "../../../react_components/requiresSubscription";
 import { getFeatureStatusAsync } from "../../../react_components/featureStatus";
+import { Animation } from "bloom-player";
+import { BloomMessageBox } from "../../../utils/BloomMessageBox";
 
 // The toolbox is included in the list of tools because of this line of code
 // in tooboxBootstrap.ts:
@@ -702,188 +704,46 @@ export class MotionTool extends ToolboxToolReactAdaptor {
             this.cleanupAnimation();
             return;
         }
+
         const page = this.getPage();
         if (!page || !page.documentElement) return; // paranoid
         const contentWindow = this.getPageFrame().contentWindow;
         if (!contentWindow) return; // paranoid
-
-        const scale = EditableDivUtils.getPageScale();
         const bloomPage = page.getElementsByClassName(
             "bloom-page"
         )[0] as HTMLElement;
-        const pageWidth = this.getWidth(bloomPage);
+        const pageParent = bloomPage.parentElement!;
+        const parentAspectRatio =
+            pageParent.clientWidth / pageParent.clientHeight;
 
-        const pageDoc = contentWindow.document;
-        // Make a div with the shape of a typical phone screen in landscape mode which
-        // will be the root for displaying the animation.
-        const animationPageHeight =
-            (pageWidth / this.animationPreviewAspectRatio) * scale;
-        const animationPageWidth = pageWidth * scale;
-        this.animationRootDiv = getEditablePageBundleExports()!.makeElement(
-            "<div " +
-                "style='background-color:black; " +
-                "height:" +
-                animationPageHeight +
-                "px; width:" +
-                animationPageWidth +
-                "px; " +
-                "position: absolute;" +
-                "left: 0;" +
-                "top: 0;" +
-                "'></div>",
-            $(pageDoc.body)
-        )[0] as HTMLElement;
-
-        // Make a div that determines the shape and position of the animation.
-        // It wraps a div that will move (by being scaled larger and translated) and be clipped (to animationWrapDiv)
-        // which in turn wraps a modified clone of bloomCanvasToAnimate, the content that gets panned and zoomed.
-        // Enhance: when we change the signature of makeElement, we can get rid of the vestiges of JQuery here and above.
-        this.animationWrapDiv = getEditablePageBundleExports()!.makeElement(
-            "<div class='" +
-                this.wrapperClassName +
-                " bloom-animationWrapper' " +
-                "'><div id='bloom-movingDiv'></div></div>"
-        )[0] as HTMLElement;
-
-        const baseStyle = "visibility: hidden; background-color:white;";
-
-        // Figure out the size and position we need for animationRootDiv and animationWrapDiv.
-        // We use the original bloom canvas to get the aspect ratio here because the clone
-        // may not have finished loading yet, and also because we are using the shape
-        // of the bloom-canvas as the basis for the shape of the rectangles, and it may not
-        // exactly match the shape of the background image we are going to animate.
-        // Enhance: if we allow the zoom rectangles to be a different shape from the image,
-        // this should change to get the aspect ratio from the initialrect.
-        const panZoomAspectRatio =
-            this.getWidth(bloomCanvasToAnimate) /
-            this.getHeight(bloomCanvasToAnimate);
-        if (panZoomAspectRatio < this.animationPreviewAspectRatio) {
-            // black bars on side
-            const imageWidth = animationPageHeight * panZoomAspectRatio;
-            this.animationWrapDiv.setAttribute(
-                "style",
-                baseStyle +
-                    " height: 100%; width: " +
-                    imageWidth +
-                    "px; left: " +
-                    (animationPageWidth - imageWidth) / 2 +
-                    "px; top:0"
-            );
-        } else {
-            // black bars top and bottom
-            const imageHeight = animationPageWidth / panZoomAspectRatio;
-            this.animationWrapDiv.setAttribute(
-                "style",
-                baseStyle +
-                    " width: 100%; height: " +
-                    imageHeight +
-                    "px; top: " +
-                    (animationPageHeight - imageHeight) / 2 +
-                    "px; left: 0"
-            );
-        }
-        const picToAnimate = bloomCanvasToAnimate.cloneNode(
-            true
-        ) as HTMLElement;
-        // don't use getElementById here; the elements we want to remove are NOT yet
-        // in the document, but the ones they are clones of (which we want to keep) are.
-        picToAnimate.querySelector("#animationStart")?.remove();
-        picToAnimate.querySelector("#animationEnd")?.remove();
-        picToAnimate.querySelector("canvas")?.remove();
-
-        picToAnimate.setAttribute(
-            "style",
-            "height:" +
-                animationPageHeight +
-                "px;width: " +
-                animationPageWidth +
-                "px;"
-        );
         const duration = this.calculateDuration(page);
-        const movingDiv = this.animationWrapDiv.firstElementChild;
-        const initialRectStr = bloomCanvasToAnimate.getAttribute(
-            "data-initialrect"
-        );
-        const finalRectStr = bloomCanvasToAnimate.getAttribute(
-            "data-finalrect"
-        );
-        if (initialRectStr && finalRectStr && movingDiv) {
-            // paranoia
-            movingDiv.appendChild(picToAnimate);
-            this.animationRootDiv.appendChild(this.animationWrapDiv);
-            page.documentElement.appendChild(this.animationRootDiv);
-            // Eventually we may animate all the canvas elements in the bloom-canvas that
-            // holds the animation rectangles. For now, we just handle the one
-            // (normally the only one) that holds the main (background) image.
-            // Enhance: handle a cropped image. (Would not have to change Bloom Player,
-            // since the image will be really cropped during export.)
-            const backgroundCanvasElement = getBackgroundCanvasElementFromBloomCanvas(
-                picToAnimate
-            ) as HTMLElement;
 
-            // unfortunately the cloned canvas element brings over attributes that position it in the current container.
-            // The new parent is not the same size and we need different values to center it and make
-            // it fill the container as much as possible.
-            // We'd like to position it using SetupImage(actualImage); (from bloomImages) but for some reason,
-            // probably because several parents are newly created, that's proving flaky.
-            // The code here is a simplification of that method.
-            const imgAspectRatio =
-                backgroundCanvasElement.clientWidth /
-                backgroundCanvasElement.clientHeight;
-            const containerWidth = this.getWidth(picToAnimate);
-            const containerHeight = this.getHeight(picToAnimate);
-            let newWidth: number, newHeight: number;
-            let newTop = 0;
-            let newLeft = 0;
-            if (imgAspectRatio > containerWidth / containerHeight) {
-                // full width, center vertically.
-                newWidth = containerWidth;
-                newHeight = containerWidth / imgAspectRatio;
-                newTop = (containerHeight - newHeight) / 2;
-            } else {
-                newHeight = containerHeight;
-                newWidth = containerHeight * imgAspectRatio;
-                newLeft = (this.getWidth(this.animationWrapDiv) - newWidth) / 2;
-            }
-            backgroundCanvasElement.style.width = "" + newWidth + "px";
-            backgroundCanvasElement.style.height = "" + newHeight + "px";
-            backgroundCanvasElement.style.left = "" + newLeft + "px";
-            backgroundCanvasElement.style.top = "" + 0 + "px";
-            backgroundCanvasElement.style.marginLeft = "0px";
-            backgroundCanvasElement.style.marginTop = "0px";
-            this.animationStyleElement = pageDoc.createElement("style");
-            this.animationStyleElement.setAttribute("type", "text/css");
-            this.animationStyleElement.setAttribute("id", "animationSheet");
-            this.animationStyleElement.innerText =
-                ".bloom-ui-animationWrapper {overflow: hidden; translateZ(0)} " +
-                ".bloom-animate {height: 100%; width: 100%; " +
-                "background-repeat: no-repeat; background-size: contain}";
-            pageDoc.body.appendChild(this.animationStyleElement);
-            const stylesheet = this.animationStyleElement.sheet;
-            if (stylesheet) {
-                this.addCssRules(
-                    stylesheet,
-                    duration,
-                    initialRectStr,
-                    finalRectStr
-                );
-            }
-            movingDiv.setAttribute(
-                "class",
-                "bloom-animate bloom-pausable " + this.animateStyleName
-            );
-        } // end paranoia 'if'
-
-        // At this point the wrapDiv becomes visible and the animation starts.
-        //wrapDiv.show(); mysteriously fails
-        const currentStyle = this.animationWrapDiv.getAttribute("style");
-        if (currentStyle) {
-            this.animationWrapDiv.setAttribute(
-                "style",
-                currentStyle.replace("visibility: hidden; ", "")
-            );
+        //make a copy of the bloom page and put it in landscape orientation (16:9 aspect ratio)
+        const animatableBloomPage = bloomPage.cloneNode(true) as HTMLElement;
+        animatableBloomPage.classList.add("bloom-animation-page");
+        animatableBloomPage.style.visibility = "hidden";
+        if (parentAspectRatio < 16 / 9) {
+            animatableBloomPage.style.width = "100%";
+            animatableBloomPage.style.height = `${(9 / 16) *
+                animatableBloomPage.clientWidth}px`;
+        } else {
+            animatableBloomPage.style.height = "100%";
+            animatableBloomPage.style.width = `${(16 / 9) *
+                animatableBloomPage.clientHeight}`;
         }
+
+        const animationEngine = new Animation();
+        animationEngine.HandlePageDurationAvailable(
+            animatableBloomPage,
+            duration
+        );
+        animationEngine.HandlePageVisible(animatableBloomPage);
+
+        console.log(`should we animate: ${animationEngine.shouldAnimate()}`);
+
+        pageParent.appendChild(animatableBloomPage);
         bloomPage.style.visibility = "hidden";
+        animatableBloomPage.style.visibility = "visible";
         if (this.rootControl.state.previewVoice) {
             // Play the audio during animation
             this.narrationPlayer = new AudioRecording();
@@ -902,63 +762,6 @@ export class MotionTool extends ToolboxToolReactAdaptor {
             this.cleanupAnimation();
             this.rootControl.setState({ playing: false });
         }, (duration + 1) * 1000);
-    }
-
-    // Add CSS rules for keyframes and preview animation
-    private addCssRules(
-        stylesheet: StyleSheet,
-        duration: number,
-        initialRectStr: string,
-        finalRectStr: string
-    ) {
-        const wrapDivWidth = this.getWidth(this.animationWrapDiv);
-        const wrapDivHeight = this.getHeight(this.animationWrapDiv);
-        const initialRect = initialRectStr.split(" ");
-        const finalRect = finalRectStr.split(" ");
-        // Will take the form of "scale3d(W, H,1.0) translate3d(Xpx, Ypx, 0px)"
-        // Using 3d scale and transform apparently causes GPU to be used and improves
-        // performance over scale/transform. (https://www.kirupa.com/html5/ken_burns_effect_css.htm)
-        // May also help with blurring of material originally hidden.
-        const initialTransform = this.calculateTransform(
-            initialRect,
-            wrapDivWidth,
-            wrapDivHeight
-        );
-        const finalTransform = this.calculateTransform(
-            finalRect,
-            wrapDivWidth,
-            wrapDivHeight
-        );
-
-        //Insert the keyframe animation rule with the dynamic begin and end set
-        const movePicName = "movepic";
-        (stylesheet as CSSStyleSheet).insertRule(
-            "@keyframes " +
-                movePicName +
-                " { from{ transform-origin: 0px 0px; transform: " +
-                initialTransform +
-                "; } to{ transform-origin: 0px 0px; transform: " +
-                finalTransform +
-                "; } }",
-            0
-        );
-
-        //Insert the css for the imageView div that utilizes the newly created animation
-        // We make the animation longer than the narration by the transition time so
-        // the old animation continues during the fade.
-        (stylesheet as CSSStyleSheet).insertRule(
-            "." +
-                this.animateStyleName +
-                " { transform-origin: 0px 0px; transform: " +
-                initialTransform +
-                "; animation-name: " +
-                movePicName +
-                "; animation-duration: " +
-                duration +
-                "s; animation-fill-mode: forwards; " +
-                "animation-timing-function: linear;}",
-            1
-        );
     }
 
     private calculateTransform(
@@ -1023,15 +826,19 @@ export class MotionTool extends ToolboxToolReactAdaptor {
     private cleanupAnimation() {
         const page = this.getPage();
         if (!page) return;
-        (page.getElementsByClassName(
+        const bloomPage = page.getElementsByClassName(
             "bloom-page"
-        )[0] as HTMLElement).style.visibility = "";
-        // stop the animation itself by removing the root elements it adds.
-        this.removeElt(this.animationStyleElement);
-        this.animationStyleElement = null;
-        this.removeElt(this.animationRootDiv);
-        this.animationWrapDiv = null;
-        this.animationRootDiv = null;
+        )[0] as HTMLElement;
+        bloomPage.style.visibility = "visible";
+
+        // stop the animation by removing the root element it adds.
+        const animatedBloomPage = document.getElementsByClassName(
+            "bloom-animation-page"
+        )[0];
+        console.log(`animated bloom page: `);
+        console.log(animatedBloomPage);
+        bloomPage.parentElement!.removeChild(animatedBloomPage as Node);
+
         // stop narration if any.
         if (this.narrationPlayer) {
             this.narrationPlayer.stopListen();
