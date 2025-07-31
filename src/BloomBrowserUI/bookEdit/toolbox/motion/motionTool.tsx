@@ -731,24 +731,21 @@ export class MotionTool extends ToolboxToolReactAdaptor {
         animationEngine.HandlePageVisible(bloomPage);
 
         //get the animation divs
-        const animationTopLevel = bloomPage.getElementsByClassName(
+        const background = bloomPage.getElementsByClassName(
             "hidePage"
-        )[0];
-        const animationWrapper = animationTopLevel.firstElementChild! as HTMLElement;
+        )[0] as HTMLElement;
+        const animationWrapper = background.firstElementChild! as HTMLElement;
         const animationCanvas = animationWrapper.firstElementChild! as HTMLElement;
 
         //hide the animation start/end rectangles
-        animationCanvas.removeChild(
-            animationCanvas.querySelector("#animationEnd")!
-        );
-        animationCanvas.removeChild(
-            animationCanvas.querySelector("#animationStart")!
-        );
+        // animationCanvas.removeChild(
+        //     animationCanvas.querySelector("#animationEnd")!
+        // );
+        // animationCanvas.removeChild(
+        //     animationCanvas.querySelector("#animationStart")!
+        // );
 
-        // 16:9 black rectangle to show aspect ratio
-        const background = document.createElement("div");
-        background.classList.add("animation-background");
-        bloomPage.appendChild(background);
+        // turn the background into a 16:9 black rectangle to show aspect ratio
         background.style.backgroundColor = "black";
         background.style.position = "absolute";
         if (bloomPage.clientWidth / bloomPage.clientHeight < 16 / 9) {
@@ -765,18 +762,29 @@ export class MotionTool extends ToolboxToolReactAdaptor {
                 (bloomPage.clientWidth - background.clientWidth)}px`;
         }
 
-        //ensure the animation view is inside the black rectangle
-        if (animationWrapper.clientHeight > background.clientHeight) {
-            animationWrapper.style.height = `${background.clientHeight}px`;
-            animationWrapper.style.top = background.style.top;
-        } else if (animationWrapper.clientWidth > background.clientWidth) {
-            animationWrapper.style.width = `${background.clientWidth}px`;
-            animationWrapper.style.left = background.style.left;
+        //position the animation view inside the black rectangle
+        const imageDimensions = animationCanvas
+            .getAttribute("data-imgsizebasedon")
+            ?.split(",")
+            .map(parseFloat)!;
+        const animationAspectRatio = imageDimensions[0] / imageDimensions[1];
+        if (animationAspectRatio > 16 / 9) {
+            console.warn("wide boy");
+            animationWrapper.style.width = "100%";
+            animationWrapper.style.height = `${animationWrapper.clientWidth /
+                animationAspectRatio}px`;
+            animationWrapper.style.left = "0px";
+            animationWrapper.style.top = `${0.5 *
+                (background.clientHeight - animationWrapper.clientHeight)}px`;
+        } else {
+            console.warn("tall boy");
+            animationWrapper.style.height = "100%";
+            animationWrapper.style.width = `${animationWrapper.clientHeight *
+                animationAspectRatio}px`;
+            animationWrapper.style.top = "0px";
+            animationWrapper.style.left = `${0.5 *
+                (background.clientWidth - animationWrapper.clientWidth)}px`;
         }
-
-        //put the animationview in front of the background
-        background.style.zIndex = "1";
-        animationWrapper.style.zIndex = "2";
 
         if (this.rootControl.state.previewVoice) {
             // Play the audio during animation
@@ -805,12 +813,6 @@ export class MotionTool extends ToolboxToolReactAdaptor {
         // stop the animation by removing the root element it adds.
         const animatedBloomPage = page.getElementsByClassName("hidePage")[0];
         animatedBloomPage.parentElement!.removeChild(animatedBloomPage);
-
-        // remove the black background
-        const animationBackground = page.getElementsByClassName(
-            "animation-background"
-        )[0];
-        animationBackground.parentElement!.removeChild(animationBackground);
 
         const bloomPage = page.getElementsByClassName(
             "bloom-page"
