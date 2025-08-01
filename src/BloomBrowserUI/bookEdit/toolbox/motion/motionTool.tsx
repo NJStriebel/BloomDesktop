@@ -21,7 +21,7 @@ import { css } from "@emotion/react";
 import { kMotionToolId } from "../toolIds";
 import { RequiresSubscriptionOverlayWrapper } from "../../../react_components/requiresSubscription";
 import { getFeatureStatusAsync } from "../../../react_components/featureStatus";
-import { Animation } from "bloom-player";
+import { TransformBasedAnimator } from "bloom-player";
 import { BloomMessageBox } from "../../../utils/BloomMessageBox";
 
 // The toolbox is included in the list of tools because of this line of code
@@ -31,9 +31,6 @@ import { BloomMessageBox } from "../../../utils/BloomMessageBox";
 /// The motion tool lets you define two rectangles; Bloom Reader will pan & zoom from one to the other
 export class MotionTool extends ToolboxToolReactAdaptor {
     private rootControl: MotionControl;
-    private animationStyleElement: HTMLStyleElement | null;
-    private animationWrapDiv: HTMLElement | null;
-    private animationRootDiv: HTMLElement | null;
     private narrationPlayer: AudioRecording;
     private stopPreviewTimeout: number;
     private animationPreviewAspectRatio = 16 / 9; // width divided by height of desired simulated device screen
@@ -271,6 +268,12 @@ export class MotionTool extends ToolboxToolReactAdaptor {
     }
 
     public detachFromPage() {
+        if (this.rootControl.state.playing) {
+            this.rootControl.setState({ playing: false });
+            window.clearTimeout(this.stopPreviewTimeout);
+            this.cleanupAnimation();
+        }
+
         const page = this.getPage();
         if (page) {
             this.removeElt(page.getElementById("animationStart"));
@@ -662,19 +665,10 @@ export class MotionTool extends ToolboxToolReactAdaptor {
     }
 
     private animateStyleName: string = "bloom-animationPreview";
+    readonly hiddenStyleName: string = "bloom-hidden-for-animation";
 
-    // This code shares various aspects with BloomPlayer. But I don't see a good way to share them, and many aspects are very different.
-    // - This code is simpler because there is only ever one motion-capable image in a document
-    //   (for now, anyway, since bloom only displays one page at a time in edit mode and we only support motion on the first image)
-    // - this code is also simpler because we don't have to worry about the image not yet being loaded by the time we
-    // want to set up the animation
-    // - this code is complicated by having to deal with problems caused by parent divs using scale for zoom.
-    // - currently, this code animates the new way of representing images as "background canvas elements", while
-    //   BloomPlayer still uses the old way of representing them as the direct img child of the container.
-    //   (Export converts to this representation.)
-    // somewhat more care is needed here to avoid adding the animation stuff permanently to the document
-    // Review: Man this is a long method! It used to be almost 300 lines. I've refactored to bring it down
-    // some to just over 200 lines.
+    //hide everything on the page, make a copy of the canvas, and move it using the TransformBasedAnimator class from bloom-player
+    //Enhance: refactor this method and bloom-player's Animation.setupAnimation() to share more of the code that sets up the HTML structure around the canvas
     private toggleMotionPreviewPlaying() {
         const bloomCanvasToAnimate = this.getBloomCanvasToAnimate();
         if (
@@ -713,78 +707,120 @@ export class MotionTool extends ToolboxToolReactAdaptor {
             "bloom-page"
         )[0] as HTMLElement;
 
-        const duration = this.calculateDuration(page);
-        bloomPage.classList.add("Landscape"); //lie to the animation engine and tell it we're in landscape mode so that it will animate.
+        //create the animation divs
+        const animationBackground = document.createElement("div");
+        animationBackground.classList.add(this.animateStyleName);
+        const animationWrapper = document.createElement("div");
+        const animationCanvas = bloomPage
+            .querySelector(".bloom-canvas")!
+            .cloneNode(true) as HTMLElement;
 
-        //hide everything on the page except the animation view
-        const children = Array.from(bloomPage.children) as HTMLElement[];
-        for (const child of children) {
-            if (!child.classList.contains("hidePage")) {
-                child.style.visibility = "hidden";
-            }
-        }
-
-        //start the animation
-        const animationEngine = new Animation();
-        animationEngine.PlayAnimations = true;
-        animationEngine.HandlePageDurationAvailable(bloomPage, duration);
-        animationEngine.HandlePageVisible(bloomPage);
-
-        //get the animation divs
-        const background = bloomPage.getElementsByClassName(
-            "hidePage"
-        )[0] as HTMLElement;
-        const animationWrapper = background.firstElementChild! as HTMLElement;
-        const animationCanvas = animationWrapper.firstElementChild! as HTMLElement;
-
-        //hide the animation start/end rectangles
-        // animationCanvas.removeChild(
-        //     animationCanvas.querySelector("#animationEnd")!
-        // );
-        // animationCanvas.removeChild(
-        //     animationCanvas.querySelector("#animationStart")!
-        // );
-
-        // turn the background into a 16:9 black rectangle to show aspect ratio
-        background.style.backgroundColor = "black";
-        background.style.position = "absolute";
-        if (bloomPage.clientWidth / bloomPage.clientHeight < 16 / 9) {
-            background.style.width = "100%";
-            background.style.height = `${(background.clientWidth * 9) / 16}px`;
-            background.style.left = "0px";
-            background.style.top = `${0.5 *
-                (bloomPage.clientHeight - background.clientHeight)}px`;
+        //Prepare the animation background
+        bloomPage.insertBefore(animationBackground, bloomPage.firstChild!);
+        // turn it into a 16:9 black rectangle to show aspect ratio
+        animationBackground.style.backgroundColor = "black";
+        animationBackground.style.position = "absolute";
+        if (
+            bloomPage.clientWidth / bloomPage.clientHeight <
+            this.animationPreviewAspectRatio
+        ) {
+            animationBackground.style.width = "100%";
+            animationBackground.style.height = `${animationBackground.clientWidth /
+                this.animationPreviewAspectRatio}px`;
+            animationBackground.style.left = "0px";
+            animationBackground.style.top = `${0.5 *
+                (bloomPage.clientHeight - animationBackground.clientHeight)}px`;
         } else {
-            background.style.height = "100%";
-            background.style.width = `${(background.clientHeight * 16) / 9}px`;
-            background.style.top = "0px";
-            background.style.left = `${0.5 *
-                (bloomPage.clientWidth - background.clientWidth)}px`;
+            animationBackground.style.height = "100%";
+            animationBackground.style.width = `${animationBackground.clientHeight *
+                this.animationPreviewAspectRatio}px`;
+            animationBackground.style.top = "0px";
+            animationBackground.style.left = `${0.5 *
+                (bloomPage.clientWidth - animationBackground.clientWidth)}px`;
         }
+        animationBackground.classList.add("bloom-ui"); //this class tells the C# code responsible for saving the page to disregard this element
 
+        //Prepare the animation wrapper
+        animationBackground.appendChild(animationWrapper);
         //position the animation view inside the black rectangle
-        const imageDimensions = animationCanvas
+        const canvasDimensions = animationCanvas
             .getAttribute("data-imgsizebasedon")
             ?.split(",")
             .map(parseFloat)!;
-        const animationAspectRatio = imageDimensions[0] / imageDimensions[1];
-        if (animationAspectRatio > 16 / 9) {
-            console.warn("wide boy");
+        const animationAspectRatio = canvasDimensions[0] / canvasDimensions[1];
+        if (animationAspectRatio > this.animationPreviewAspectRatio) {
             animationWrapper.style.width = "100%";
             animationWrapper.style.height = `${animationWrapper.clientWidth /
                 animationAspectRatio}px`;
             animationWrapper.style.left = "0px";
             animationWrapper.style.top = `${0.5 *
-                (background.clientHeight - animationWrapper.clientHeight)}px`;
+                (animationBackground.clientHeight -
+                    animationWrapper.clientHeight)}px`;
         } else {
-            console.warn("tall boy");
             animationWrapper.style.height = "100%";
             animationWrapper.style.width = `${animationWrapper.clientHeight *
                 animationAspectRatio}px`;
             animationWrapper.style.top = "0px";
             animationWrapper.style.left = `${0.5 *
-                (background.clientWidth - animationWrapper.clientWidth)}px`;
+                (animationBackground.clientWidth -
+                    animationWrapper.clientWidth)}px`;
         }
+        animationWrapper.style.overflow = "hidden";
+        animationWrapper.style.transform = "translateZ(0)"; //needed for overflow:hidden to have an effect on a transformed child
+
+        //Prepare the animation canvas
+        animationWrapper.appendChild(animationCanvas);
+        const wrapperDimensions = [
+            animationWrapper.clientWidth,
+            animationWrapper.clientHeight
+        ];
+        animationCanvas.style.width = `${canvasDimensions[0]}px`;
+        animationCanvas.style.height = `${canvasDimensions[1]}px`;
+        animationCanvas.style.scale = `${wrapperDimensions[0] /
+            canvasDimensions[0]}`;
+        animationCanvas.style.top = `${(wrapperDimensions[1] -
+            canvasDimensions[1]) /
+            2}px`;
+        animationCanvas.style.left = `${(wrapperDimensions[0] -
+            canvasDimensions[0]) /
+            2}px`;
+
+        //hide the animation rectangles
+        animationCanvas.removeChild(
+            animationCanvas.querySelector("#animationStart")!
+        );
+        animationCanvas.removeChild(
+            animationCanvas.querySelector("#animationEnd")!
+        );
+
+        //hide everything on the page except the animation view
+        const children = Array.from(bloomPage.children) as HTMLElement[];
+        for (const child of children) {
+            if (!child.classList.contains(this.animateStyleName)) {
+                child.style.visibility = "hidden";
+                child.classList.add(this.hiddenStyleName);
+            }
+        }
+        //hide the "change layout" toggle
+        const layoutToggle = page.querySelector(
+            ".above-page-control-container"
+        ) as HTMLElement;
+        if (layoutToggle) {
+            layoutToggle.classList.add(this.hiddenStyleName);
+            layoutToggle.style.visibility = "hidden";
+        }
+
+        //start the animation
+        const initialRect = animationCanvas.getAttribute("data-initialrect")!;
+        const finalRect = animationCanvas.getAttribute("data-finalrect")!;
+        const duration = this.calculateDuration(page);
+        const animationEngine = new TransformBasedAnimator(
+            initialRect,
+            finalRect,
+            duration,
+            animationCanvas
+        );
+        animationEngine.playFromBeginning();
 
         if (this.rootControl.state.previewVoice) {
             // Play the audio during animation
@@ -810,17 +846,36 @@ export class MotionTool extends ToolboxToolReactAdaptor {
         const page = this.getPage();
         if (!page) return;
 
-        // stop the animation by removing the root element it adds.
-        const animatedBloomPage = page.getElementsByClassName("hidePage")[0];
-        animatedBloomPage.parentElement!.removeChild(animatedBloomPage);
+        // stop the animation by removing any elements it added to the page.
+        const animationElements = Array.from(
+            page.getElementsByClassName(this.animateStyleName)
+        );
+        animationElements.forEach(child =>
+            child.parentElement!.removeChild(child)
+        );
 
         const bloomPage = page.getElementsByClassName(
             "bloom-page"
         )[0] as HTMLElement;
         bloomPage.classList.remove("Landscape");
 
+        //show all the page elements we hid when creating the animation preview
         for (const child of Array.from(bloomPage.children) as HTMLElement[]) {
-            child.style.visibility = "visible";
+            if (child.classList.contains(this.hiddenStyleName)) {
+                child.style.visibility = "visible";
+                child.classList.remove(this.hiddenStyleName);
+            }
+        }
+        //show the "change layout" toggle again
+        const layoutToggle = page.querySelector(
+            ".above-page-control-container"
+        ) as HTMLElement;
+        if (
+            layoutToggle &&
+            layoutToggle.classList.contains(this.hiddenStyleName)
+        ) {
+            layoutToggle.classList.remove(this.hiddenStyleName);
+            layoutToggle.style.visibility = "visible";
         }
 
         // stop narration if any.
