@@ -14,15 +14,13 @@ import {
     DisableImageEditing,
     EnableImageEditing,
     getBackgroundImageFromBloomCanvas,
-    getBackgroundCanvasElementFromBloomCanvas,
     kBloomCanvasClass
 } from "../../js/bloomImages";
-import { css } from "@emotion/react";
 import { kMotionToolId } from "../toolIds";
 import { RequiresSubscriptionOverlayWrapper } from "../../../react_components/requiresSubscription";
 import { getFeatureStatusAsync } from "../../../react_components/featureStatus";
 import { TransformBasedAnimator } from "bloom-player";
-import { BloomMessageBox } from "../../../utils/BloomMessageBox";
+import { Comical } from "comicaljs";
 
 // The toolbox is included in the list of tools because of this line of code
 // in tooboxBootstrap.ts:
@@ -711,9 +709,24 @@ export class MotionTool extends ToolboxToolReactAdaptor {
         const animationBackground = document.createElement("div");
         animationBackground.classList.add(this.animateStyleName);
         const animationWrapper = document.createElement("div");
-        const animationCanvas = bloomPage
-            .querySelector(".bloom-canvas")!
-            .cloneNode(true) as HTMLElement;
+        const animationCanvas = bloomCanvasToAnimate.cloneNode(
+            true
+        ) as HTMLElement;
+
+        //if the page has overlays, copy them to the animation canvas
+        const comicalCanvas = bloomCanvasToAnimate.querySelector(
+            ".comical-generated"
+        ) as HTMLCanvasElement;
+        if (comicalCanvas) {
+            const animatedComicalCanvas = animationCanvas.querySelector(
+                ".comical-generated"
+            ) as HTMLCanvasElement;
+            const drawingContext = animatedComicalCanvas.getContext("2d");
+            drawingContext?.drawImage(comicalCanvas, 0, 0);
+
+            // Comical.startEditing([animationCanvas]);
+            // Comical.stopEditing();
+        }
 
         //Prepare the animation background
         bloomPage.insertBefore(animationBackground, bloomPage.firstChild!);
