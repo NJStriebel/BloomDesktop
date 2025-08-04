@@ -20,7 +20,6 @@ import { kMotionToolId } from "../toolIds";
 import { RequiresSubscriptionOverlayWrapper } from "../../../react_components/requiresSubscription";
 import { getFeatureStatusAsync } from "../../../react_components/featureStatus";
 import { TransformBasedAnimator } from "bloom-player";
-import { Comical } from "comicaljs";
 
 // The toolbox is included in the list of tools because of this line of code
 // in tooboxBootstrap.ts:
@@ -165,7 +164,8 @@ export class MotionTool extends ToolboxToolReactAdaptor {
             const htmlForDraggable =
                 "<div id='" +
                 id +
-                "' style='height: " +
+                "'class='bloom-animationRect' " +
+                "style='height: " +
                 height +
                 "px; width:" +
                 width +
@@ -176,7 +176,7 @@ export class MotionTool extends ToolboxToolReactAdaptor {
                 "px;'>" +
                 htmlForDragHandle +
                 "  <div style='height:100%;width:100%;position:absolute;top:0;left:0;" +
-                `border: dashed ${color} 2px;box-sizing:border-box;z-index:1'></div>` +
+                `border: dashed ${color} 2px;box-sizing:border-box;z-index:2000;pointer-events:none';></div>` + //set the border div's z index to 2000 so it's in front of any overlays, but behind the other rectangle's draggable components
                 htmlForResizeHandles +
                 "</div>";
             // Do NOT use an opacity setting here. Besides the fact that there's no reason to dim the rectangle while
@@ -228,7 +228,7 @@ export class MotionTool extends ToolboxToolReactAdaptor {
         };
         const bloomBlue = "#1D94A4";
         const bloomPurple = "#96668F";
-        const rect1 = makeResizeRect(
+        makeResizeRect(
             "1",
             "animationStart",
             0,
@@ -238,7 +238,7 @@ export class MotionTool extends ToolboxToolReactAdaptor {
             "data-initialrect",
             bloomBlue
         );
-        const rect2 = makeResizeRect(
+        makeResizeRect(
             "2",
             "animationEnd",
             3 / 8,
@@ -723,9 +723,6 @@ export class MotionTool extends ToolboxToolReactAdaptor {
             ) as HTMLCanvasElement;
             const drawingContext = animatedComicalCanvas.getContext("2d");
             drawingContext?.drawImage(comicalCanvas, 0, 0);
-
-            // Comical.startEditing([animationCanvas]);
-            // Comical.stopEditing();
         }
 
         //Prepare the animation background
