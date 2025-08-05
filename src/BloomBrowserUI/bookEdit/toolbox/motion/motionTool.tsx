@@ -830,7 +830,7 @@ export class MotionTool extends ToolboxToolReactAdaptor {
             duration,
             animationCanvas
         );
-        animationEngine.playFromBeginning();
+        animationEngine.startAnimation();
 
         if (this.rootControl.state.previewVoice) {
             // Play the audio during animation
