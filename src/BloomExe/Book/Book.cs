@@ -3645,16 +3645,7 @@ namespace Bloom.Book
             foreach (SafeXmlElement scriptElt in newPageDiv.SafeSelectNodes(".//script[@src]"))
             {
                 var fileName = scriptElt.GetAttribute("src");
-
-                // TODO BL-14565: this is probably out of date; any such file should be part of Bloom Player shared code.
-
-                // Bloom Desktop accesses simpleComprehensionQuiz.js from the output/browser folder.
-                // Bloom Reader uses the copy of that file which comes with bloom-player.
-                // See https://issues.bloomlibrary.org/youtrack/issue/BL-8480.
-                if (
-                    string.IsNullOrEmpty(fileName)
-                    || fileName == PublishHelper.kSimpleComprehensionQuizJs
-                )
+                if (string.IsNullOrEmpty(fileName))
                     continue;
                 var destinationPath = Path.Combine(FolderPath, fileName);
                 // In other similar operations above we don't overwrite an existing file (e.g., images, css).
@@ -5146,13 +5137,19 @@ namespace Bloom.Book
         /// <returns></returns>
         public string GetCoverImagePath()
         {
+            return GetCoverImagePathAndElt(out SafeXmlElement _);
+        }
+
+        public string GetCoverImagePathAndElt(out SafeXmlElement coverImgElt)
+        {
+            coverImgElt = null;
             if (Storage == null)
                 return null; // can happen in tests
             // This first branch covers the currently obsolete approach to images using background-image.
             // In that approach the data-book attribute is on the imageContainer.
             // Note that we want the coverImage from a page, instead of the dataDiv because the former
             // "doesn't have the data in the form that GetImageElementUrl can handle."
-            var coverImgElt = Storage.Dom
+            coverImgElt = Storage.Dom
                 .SafeSelectNodes("//div[not(@id='bloomDataDiv')]/div[@data-book='coverImage']")
                 .Cast<SafeXmlElement>()
                 .FirstOrDefault();

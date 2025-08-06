@@ -37,6 +37,7 @@ using System.Text;
 using Bloom.Utils;
 using Bloom.web.controllers;
 using Bloom.SafeXml;
+using Markdig.Extensions.Alerts;
 
 namespace Bloom
 {
@@ -242,6 +243,7 @@ namespace Bloom
                 {
                     Application.DoEvents();
                 }
+                WebView2Browser.CleanupWebView2UserFolders();
                 return mainTask.Result; // we're done; this is safe once there is nothing being awaited.
             }
 
@@ -289,12 +291,10 @@ namespace Bloom
                 // Migrate from old monolithic experimental features setting.
                 ExperimentalFeatures.MigrateFromOldSettings();
 
-                if (IsInstallerLaunch(args))
-                {
-                    InstallerSupport.HandleSquirrelInstallEvent(args); // may exit program
-                }
+                if (!InstallerSupport.HandleVelopackStartup(args)) // may exit program itself
+                    return 0; // or may conclude that we need to abort starting up.
 
-                // Needs to be AFTER HandleSquirrelInstallEvent, because that can happen when the program is launched by Update rather than
+                // Needs to be AFTER HandleVelopackStartup, because that can happen when the program is launched by Update rather than
                 // by the user.
                 if (!Settings.Default.LicenseAccepted)
                 {
@@ -643,7 +643,7 @@ namespace Bloom
             finally
             {
                 // Check memory one final time for the benefit of developers.  The user won't see anything.
-                Bloom.Utils.MemoryManagement.CheckMemory(true, "Bloom finished and exiting", false);
+                //Bloom.Utils.MemoryManagement.CheckMemory(true, "Bloom finished and exiting", false);
                 if (gotUniqueToken)
                     UniqueToken.ReleaseToken();
 
@@ -736,7 +736,7 @@ namespace Bloom
             _supressRegistrationDialog = true;
             return new DesktopAnalytics.Analytics(
                 "rw21mh2piu",
-                RegistrationDialog.GetAnalyticsUserInfo(),
+                RegistrationManager.GetAnalyticsUserInfo(),
                 propertiesThatGoWithEveryEvent,
                 allowTracking: false, // change to true if you want to test sending
                 retainPii: true,
@@ -752,7 +752,7 @@ namespace Bloom
 
             return new DesktopAnalytics.Analytics(
                 "c8ndqrrl7f0twbf2s6cv",
-                RegistrationDialog.GetAnalyticsUserInfo(),
+                RegistrationManager.GetAnalyticsUserInfo(),
                 propertiesThatGoWithEveryEvent,
                 allowTracking,
                 retainPii: true,
@@ -926,7 +926,7 @@ namespace Bloom
 
         private static bool IsInstallerLaunch(string[] args)
         {
-            return args.Length > 0 && args[0].ToLowerInvariant().StartsWith("--squirrel");
+            return args.Length > 0 && args[0].ToLowerInvariant().StartsWith("--veloapp-");
         }
 
         private static bool IsLocalizationHarvestingLaunch(string[] args)
@@ -944,13 +944,6 @@ namespace Bloom
         //   </Extension>
         // </ProgId>
         // (But I'm not completely sure all these come from that)
-
-        // The folder where we tell squirrel to look for upgrades.
-        // As of 2-20-15 this is  = @"https://s3.amazonaws.com/bloomlibrary.org/squirrel";
-        // Controlled by the file at "http://bloomlibrary.org/channels/SquirrelUpgradeTable.txt".
-        // This allows us to have different sets of deltas and upgrade targets for betas and stable releases,
-        // or indeed to do something special for any particular version(s) of Bloom,
-        // or even to switch to a different upgrade path after releasing a version.
 
         internal static void SetProjectContext(ProjectContext projectContext)
         {
@@ -988,7 +981,7 @@ namespace Bloom
                 {
                     CheckRegistration();
                 },
-                shouldHideSplashScreen: RegistrationDialog.ShouldWeShowRegistrationDialog(),
+                shouldHideSplashScreen: RegistrationManager.ShouldWeShowRegistrationDialog(),
                 lowPriority: true
             );
 
@@ -1060,6 +1053,7 @@ namespace Bloom
             }
 
             Sldr.Cleanup();
+            Logger.WriteMinorEvent("shutting down logger, about to dispose project context");
             Logger.ShutDown();
 
             if (_projectContext != null)
@@ -1120,23 +1114,8 @@ namespace Bloom
 
         private static void CheckRegistration()
         {
-            if (RegistrationDialog.ShouldWeShowRegistrationDialog() && !_supressRegistrationDialog)
-            {
-                using (
-                    var dlg = new RegistrationDialog(
-                        false,
-                        _projectContext.TeamCollectionManager.UserMayChangeEmail
-                    )
-                )
-                {
-                    if (_projectContext != null && _projectContext.ProjectWindow != null)
-                        dlg.ShowDialog(_projectContext.ProjectWindow);
-                    else
-                    {
-                        dlg.ShowDialog();
-                    }
-                }
-            }
+            if (RegistrationManager.ShouldWeShowRegistrationDialog() && !_supressRegistrationDialog)
+                RegistrationManager.ShowRegistrationDialog(false, _projectContext.ProjectWindow);
         }
 
 #if PerProjectMutex
@@ -1340,6 +1319,8 @@ namespace Bloom
             // FileException is a Bloom exception to capture the filepath. We want to report the inner, original exception.
             Exception originalError = FileException.UnwrapIfFileException(error);
             string errorFilePath = FileException.GetFilePathIfPresent(error);
+            // We want to skip over exceptions thrown by Autofac.
+            originalError = MiscUtils.UnwrapUntilInterestingException(originalError);
             Logger.WriteError(
                 $"*** Error loading collection {Path.GetFileNameWithoutExtension(projectPath)}, on filepath: {errorFilePath}",
                 originalError
@@ -1805,7 +1786,7 @@ Anyone looking specifically at our issue tracking system can read what you sent 
             ExceptionReportingDialog.PrivacyNotice = string.Format(msgTemplate, issueTrackingUrl);
             SIL.Reporting.ErrorReport.EmailAddress = "issues@bloomlibrary.org";
             SIL.Reporting.ErrorReport.AddStandardProperties();
-            // with squirrel, the file's dates only reflect when they were installed, so we override this version thing which
+            // with Velopack, the file's dates only reflect when they were installed, so we override this version thing which
             // normally would include a bogus "Apparently Built On" date:
             var versionNumber = Program.RunningUnitTests
                 ? "Current build" // for some reason VersionNumberString throws when running unit tests, so just use this.

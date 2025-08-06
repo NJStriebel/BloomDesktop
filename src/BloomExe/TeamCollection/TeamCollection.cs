@@ -16,7 +16,6 @@ using System.Windows.Forms;
 using Bloom.Book;
 using Bloom.Collection;
 using Bloom.History;
-using Bloom.Registration;
 using Bloom.ToPalaso;
 using Bloom.Utils;
 using Bloom.web.controllers;
@@ -649,12 +648,12 @@ namespace Bloom.TeamCollection
         }
 
         // Lock the book, making it available for the specified user to edit. Return true if successful.
+        // We must ensure that the user has registered a valid email address before making the call to the API endpoint which calls this.
         public bool AttemptLock(string bookName, string email = null)
         {
-            if (!PromptForSufficientRegistrationIfNeeded())
-                return false;
-
             var whoBy = email ?? TeamCollectionManager.CurrentUser;
+            Debug.Assert(!string.IsNullOrWhiteSpace(whoBy));
+
             var status = GetStatus(bookName);
             if (String.IsNullOrEmpty(status.lockedBy) && !IsDisconnected)
             {
@@ -1943,7 +1942,9 @@ namespace Bloom.TeamCollection
                 msg
             );
             if (alsoMakeYouTrackIssue)
-                MakeYouTrackIssue(progress, msg);
+            {
+                MakeYouTrackIssue(progress, msg, folderPath);
+            }
         }
 
         /// <summary>
@@ -1974,7 +1975,7 @@ namespace Bloom.TeamCollection
                 msg
             );
             if (alsoMakeYouTrackIssue)
-                MakeYouTrackIssue(progress, msg);
+                MakeYouTrackIssue(progress, msg, Path.Combine(collectionPath, bookName));
         }
 
         /// <summary>
@@ -1982,7 +1983,7 @@ namespace Bloom.TeamCollection
         /// in which case don't bother, since the main point of creating the issue is so we
         /// can get in touch and offer help).
         /// </summary>
-        private void MakeYouTrackIssue(IWebSocketProgress progress, string msg)
+        private void MakeYouTrackIssue(IWebSocketProgress progress, string msg, string folderPath)
         {
             if (
                 !Program.RunningUnitTests
@@ -2006,9 +2007,11 @@ namespace Bloom.TeamCollection
                             e => ProblemReportApi.GetObfuscatedEmail(e)
                         )
                     );
+                    var extraInfo =
+                        $"This is a {GetBackendType()} Repo at {RepoDescription}\n{ProblemReportApi.GetBookHistoryAsString(folderPath)}";
                     // Note: there is deliberately no period after {msg} since msg usually ends with one already.
                     var fullMsg =
-                        $"{standardUserInfo} \n(Admins: {admins}):\n\nThere was a book synchronization problem that required putting a version in Lost and Found:\n{msg}\n\nSee {lostAndFoundUrl}.";
+                        $"{standardUserInfo} \n(Admins: {admins}):\n\nThere was a book synchronization problem that required putting a version in Lost and Found:\n{msg}\n\nSee {lostAndFoundUrl}.\n\n{extraInfo}";
                     var issueId = issue.SubmitToYouTrack("Book synchronization failed", fullMsg);
                     var issueLink = "https://issues.bloomlibrary.org/youtrack/issue/" + issueId;
                     ReportProgressAndLog(
@@ -3000,16 +3003,6 @@ namespace Bloom.TeamCollection
             // ENHANCE: Right now, if the book selection is checked in or checked out by another user,
             // we will update the icon in LibraryListView, but not the one in the book preview pane.
             // It'd be nice to update the book preview pane data too.
-        }
-
-        /// <summary>
-        /// Returns true if registration is sufficient (after prompting the user if needed); false otherwise
-        /// </summary>
-        public static bool PromptForSufficientRegistrationIfNeeded()
-        {
-            return RegistrationDialog.RequireRegistrationEmail(
-                "You will need to register this copy of Bloom with an email address before participating in a Team Collection"
-            );
         }
 
         public virtual bool CannotDeleteBecauseDisconnected(string bookFolderPath)

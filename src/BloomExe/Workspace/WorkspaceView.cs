@@ -10,13 +10,11 @@ using System.Windows.Forms;
 using Bloom.Api;
 using Bloom.Book;
 using Bloom.Collection;
-using Bloom.CollectionCreating;
 using Bloom.CollectionTab;
 using Bloom.Edit;
 using Bloom.MiscUI;
 using Bloom.Properties;
 using Bloom.Publish;
-using Bloom.Registration;
 using Bloom.TeamCollection;
 using Bloom.ToPalaso;
 using Bloom.Utils;
@@ -29,7 +27,6 @@ using SIL.IO;
 using SIL.PlatformUtilities;
 using SIL.Reporting;
 using SIL.Unicode;
-using SIL.Windows.Forms.Miscellaneous;
 using SIL.Windows.Forms.ReleaseNotes;
 using SIL.Windows.Forms.SettingProtection;
 using SIL.WritingSystems;
@@ -603,9 +600,9 @@ namespace Bloom.Workspace
             _applicationUpdateCheckTimer.Enabled = false;
             if (!Debugger.IsAttached && Platform.IsWindows)
             {
-                ApplicationUpdateSupport.CheckForASquirrelUpdate(
+                ApplicationUpdateSupport.CheckForAVelopackUpdate(
                     ApplicationUpdateSupport.BloomUpdateMessageVerbosity.Quiet,
-                    newInstallDir => RestartBloom(newInstallDir),
+                    () => RestartBloom(),
                     Settings.Default.AutoUpdate
                 );
             }
@@ -1081,7 +1078,7 @@ namespace Bloom.Workspace
 
             CurrentTabView = view as IBloomTabArea;
             // Warn the user if we're starting to use too much memory.
-            MemoryManagement.CheckMemory(false, "switched tab in workspace", true);
+            //MemoryManagement.CheckMemory(false, "switched tab in workspace", true);
 
             if (_previouslySelectedControl != null)
             {
@@ -1190,7 +1187,7 @@ namespace Bloom.Workspace
             TabStripButton btn = (TabStripButton)e.SelectedTab;
             _tabStrip.BackColor = btn.BarColor;
             _toolSpecificPanel.BackColor = _panelHoldingToolStrip.BackColor = _tabStrip.BackColor;
-            Logger.WriteEvent("Selecting Tab Page: " + e.SelectedTab.Name);
+            //Logger.WriteEvent("Selecting Tab Page: " + e.SelectedTab.Name);
             SelectPage((Control)e.SelectedTab.Tag);
             AdjustTabStripDisplayForScreenSize();
             if (_tabSelection.ActiveTab == WorkspaceTab.collection && _collectionTabView != null)
@@ -1230,19 +1227,10 @@ namespace Bloom.Workspace
 
         private void OnAboutBoxClick(object sender, EventArgs e)
         {
-            string path = BloomFileLocator.GetBrowserFile(
-                true,
-                "infoPages",
-                "aboutBox-" + LocalizationManager.UILanguageId + ".htm"
-            );
-            if (String.IsNullOrEmpty(path))
-            {
-                path = BloomFileLocator.GetBrowserFile(false, "infoPages", "aboutBox.htm");
-            }
-            using (var dlg = new SILAboutBox(path))
-            {
-                dlg.ShowDialog();
-            }
+            if (_tabStrip.SelectedTab == _editTab)
+                _editingView.ShowAboutDialog();
+            else
+                _webSocketServer.LaunchDialog("AboutDialog");
         }
 
         private void toolStripMenuItem3_Click(object sender, EventArgs e)
@@ -1372,7 +1360,7 @@ namespace Bloom.Workspace
                             return;
                         Settings.Default.ForumInvitationLastShown = today;
                         Settings.Default.Save();
-                        _webSocketServer.LaunchDialog("ForumInvitationDialog", new DynamicJson());
+                        _webSocketServer.LaunchDialog("ForumInvitationDialog");
                     },
                     shouldHideSplashScreen: true,
                     lowPriority: true,
@@ -1399,9 +1387,18 @@ namespace Bloom.Workspace
 
         private void OnRegistrationMenuItem_Click(object sender, EventArgs e)
         {
-            using (var dlg = new RegistrationDialog(true, _tcManager.UserMayChangeEmail))
+            ShowRegistrationDialog(true);
+        }
+
+        public void ShowRegistrationDialog(bool registrationIsOptional)
+        {
+            if (_tabStrip.SelectedTab == _editTab)
+                _editingView.ShowRegistrationDialog(registrationIsOptional);
+            else
             {
-                dlg.ShowDialog();
+                dynamic messageBundle = new DynamicJson();
+                messageBundle.registrationIsOptional = registrationIsOptional;
+                _webSocketServer.LaunchDialog("RegistrationDialog", messageBundle);
             }
         }
 
@@ -1442,7 +1439,7 @@ namespace Bloom.Workspace
         {
             if (ApplicationUpdateSupport.BloomUpdateInProgress)
             {
-                //enhance: ideally, what this would do is show a toast of whatever it is squirrel is doing: checking, downloading, waiting for a restart.
+                //enhance: ideally, what this would do is show a toast of whatever it is Velopack is doing: checking, downloading, waiting for a restart.
                 MessageBox.Show(
                     this,
                     LocalizationManager.GetString(
@@ -1475,15 +1472,15 @@ namespace Bloom.Workspace
             }
             else
             {
-                ApplicationUpdateSupport.CheckForASquirrelUpdate(
+                ApplicationUpdateSupport.CheckForAVelopackUpdate(
                     ApplicationUpdateSupport.BloomUpdateMessageVerbosity.Verbose,
-                    newInstallDir => RestartBloom(newInstallDir),
+                    () => RestartBloom(),
                     Settings.Default.AutoUpdate
                 );
             }
         }
 
-        private void RestartBloom(string newInstallDir)
+        private void RestartBloom()
         {
             Control ancestor = Parent;
             while (ancestor != null && !(ancestor is Shell))
@@ -1491,15 +1488,7 @@ namespace Bloom.Workspace
             if (ancestor == null)
                 return;
             var shell = (Shell)ancestor;
-            var pathToNewExe = Path.Combine(
-                newInstallDir,
-                Path.ChangeExtension(Application.ProductName, ".exe")
-            );
-            if (!RobustFile.Exists(pathToNewExe))
-                return; // aargh!
             shell.QuitForVersionUpdate = true;
-            Process.Start(pathToNewExe);
-            Thread.Sleep(2000);
             shell.Close();
         }
 

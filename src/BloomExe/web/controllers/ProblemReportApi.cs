@@ -845,6 +845,9 @@ namespace Bloom.web.controllers
                 }
                 return;
             }
+            // OneDriveUtils.CheckForAndHandleOneDriveExceptions recurses through inner exceptions as needed,
+            // but if we get here, we want to skip over exceptions thrown by Autofac.
+            originalException = MiscUtils.UnwrapUntilInterestingException(originalException);
 
             GatherReportInfoExceptScreenshot(
                 originalException,
@@ -1179,9 +1182,22 @@ namespace Bloom.web.controllers
             var book = _reportInfo.Book;
             if (string.IsNullOrEmpty(book?.FolderPath) || book.BookInfo == null)
                 return;
+            GetBookHistoryEvents(book.FolderPath, bldr, book.BookInfo.Title);
+        }
+
+        public static void GetBookHistoryEvents(
+            string bookFolderPath,
+            StringBuilder bldr,
+            string title = null
+        )
+        {
             try
             {
-                var events = CollectionHistory.GetBookEvents(book.BookInfo);
+                if (title == null)
+                {
+                    title = new BookInfo(bookFolderPath, false).Title;
+                }
+                var events = CollectionHistory.GetBookEvents(bookFolderPath, title);
                 if (events.Count == 0)
                     return;
 
@@ -1224,6 +1240,13 @@ namespace Bloom.web.controllers
             }
         }
 
+        public static string GetBookHistoryAsString(string bookFolderPath)
+        {
+            var bldr = new StringBuilder();
+            GetBookHistoryEvents(bookFolderPath, bldr);
+            return bldr.ToString();
+        }
+
         private static void GetExceptionInformation(StringBuilder bldr)
         {
             if (
@@ -1259,6 +1282,8 @@ namespace Bloom.web.controllers
         public static string GetObfuscatedEmail(string userEmail = "")
         {
             var email = string.IsNullOrWhiteSpace(userEmail) ? _reportInfo?.UserEmail : userEmail;
+            if (string.IsNullOrEmpty(email))
+                return email; // invalid, so no need to obfuscate
             string obfuscatedEmail;
             try
             {

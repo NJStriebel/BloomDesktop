@@ -27,6 +27,7 @@ using Bloom.ToPalaso;
 using SIL.CommandLineProcessing;
 using SIL.Windows.Forms.ClearShare;
 using Bloom.ErrorReporter;
+using FFMpegCore.Builders.MetaData;
 using L10NSharp;
 
 namespace Bloom.ImageProcessing
@@ -329,7 +330,7 @@ namespace Bloom.ImageProcessing
             bool isSameFile
         )
         {
-            LogMemoryUsage();
+            //LogMemoryUsage();
 
             // If we go through all the processing and saving machinations for the placeholder image,
             // we just get more and more placeholders when we cut images (BL-9011).
@@ -1434,6 +1435,10 @@ namespace Bloom.ImageProcessing
             {
                 LogGraphicsMagickFailure(result);
             }
+
+            var metadata = RobustFileIO.MetadataFromFile(sourcePath);
+            if (metadata != null && metadata.ExceptionCaughtWhileLoading == null)
+                metadata.Write(destPath);
 
             return result;
         }

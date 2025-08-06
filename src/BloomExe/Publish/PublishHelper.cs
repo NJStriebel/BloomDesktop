@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Xml;
 using Bloom.Api;
@@ -25,7 +27,6 @@ namespace Bloom.Publish
 {
     public class PublishHelper : IDisposable
     {
-        public const string kSimpleComprehensionQuizJs = "simpleComprehensionQuiz.js";
         public const string kVideoPlaceholderImageFile = "video-placeholder.svg";
         private static PublishHelper _latestInstance;
 
@@ -159,6 +160,36 @@ namespace Bloom.Publish
 		}
 	});
 	return { results: elementsInfo };
+})();";
+
+        // A bit of JavaScript we can run, after hacking the DOM to make all languages visible
+        // in bloom-editables, to get all the font families that are needed to render it in
+        // any of the included languages.
+        // Review: what elements should we retrieve font data for? I don't want to just use *,
+        // because there are many elements that don't hold text (or only children with different
+        // font settings hold text), and we don't care what font they may be set to use.
+        // OTOH, it's just possible that there are elements that are not our expected Bloom
+        // multilingual fields that do contain text that uses a problem font. We ought to be
+        // able to assume that Branding data has suitable fonts. Is there anything else we
+        // might want to include?
+        // Note: it would be something of an optimization to make this code return a set
+        // of the first font in each family, since that's all we really want. However, this
+        // bit of Javascript is completely outside our build process; there's no compile time
+        // checking, no access to libraries, no help at all getting it right. I want to keep
+        // it as simple as will possibly do the job. And I don't think the performance cost
+        // of passing more results back will be significant. (Moreover, we already had the
+        // quite tricky code to extract the first font family in C#.)
+        public const string GetElementFontFamilyInfoJavascript =
+            @"(() =>
+{
+	const elementsInfo = [];
+	document.querySelectorAll(""textarea, .bloom-editable *"").forEach(elt => {
+		const style = getComputedStyle(elt, null);
+		if (style) {
+			elementsInfo.push(style.getPropertyValue(""font-family""));
+		}
+	});
+	return elementsInfo;
 })();";
 
         /// <summary>
@@ -689,8 +720,8 @@ namespace Bloom.Publish
             }
         }
 
-        // Not really sure what we need here; embedding the simple comprehension quiz JS is
-        // probably obsolete in all situations, but there may be some old version of Bloom Player
+        // Not really sure what we need here; embedding the simple comprehension quiz JS has been
+        // obsolete in all situations, but there may be some old version of Bloom Player
         // that needs it. But for sure we don't need it if the game feature is disabled and thus
         // there are no games in the publication.
         // The old code did not distinguish derivatives, but we're moving more in the
@@ -705,7 +736,7 @@ namespace Bloom.Publish
                         .GetFeatureStatus(book.CollectionSettings.Subscription, FeatureName.Game)
                         .Enabled
                 )
-                    RobustFile.Delete(Path.Combine(book.FolderPath, kSimpleComprehensionQuizJs));
+                    RobustFile.Delete(Path.Combine(book.FolderPath, "simpleComprehensionQuiz.js"));
             }
         }
 
@@ -732,7 +763,7 @@ namespace Bloom.Publish
         public Dictionary<string, HashSet<string>> FontsAndLangsUsed =
             new Dictionary<string, HashSet<string>>();
 
-        private string ExtractFontNameFromFontFamily(string fontFamily)
+        private static string ExtractFontNameFromFontFamily(string fontFamily)
         {
             // we actually can get a comma-separated list with fallback font options: split into an array so we can
             // use just the first one.  We don't need to worry about the fallback fonts, just the primary one.  It
@@ -1150,6 +1181,36 @@ namespace Bloom.Publish
             string imageDestFolder
         )
         {
+            var croppedImagePath = MakeCroppedImage(img, imageSourceFolder, imageDestFolder);
+            if (croppedImagePath != null)
+            {
+                var src = img.GetAttribute("src");
+                var destPath = Path.Combine(imageDestFolder, src);
+                RobustFile.Move(croppedImagePath, destPath, true);
+                // If it failed, it should have already logged the reason. I think all we can do
+                // is leave the image alone.
+            }
+            img.RemoveAttribute("style");
+        }
+
+        /// <summary>
+        /// If the specified img is cropped, and we can find and successfully crop the
+        /// appropriate image file, make a new file containing the cropped image in imageDestFolder
+        /// and return the path to it.
+        /// If anything prevents doing this successfully, including that the image is not cropped, return null.
+        /// </summary>
+        /// <param name="img">An img element, which might need cropping if we find it in the right context.</param>
+        /// <param name="imageSourceFolder">The folder where image files live; can be combined with the src
+        /// of the image to find it. Typically the book folder.</param>
+        /// <param name="imageDestFolder">The folder where we want the cropped image placed. May be the same
+        /// as imageSourceFolder.</param>
+        /// Enhance: possibly this wants to live somewhere like ImageUtils? But so far it only has one other use.
+        public static string MakeCroppedImage(
+            SafeXmlElement img,
+            string imageSourceFolder,
+            string imageDestFolder
+        )
+        {
             var imgContainer = img.ParentNode as SafeXmlElement;
             var canvasElement = imgContainer?.ParentNode as SafeXmlElement;
             // Cropping is implemented using the interaction between a canvas element
@@ -1163,14 +1224,14 @@ namespace Bloom.Publish
                 || !canvasElement.HasClass(HtmlDom.kCanvasElementClass)
                 || !imgContainer.HasClass("bloom-imageContainer")
             )
-                return;
+                return null;
             var src = img.GetAttribute("src");
             var srcPath = UrlPathString.GetFullyDecodedPath(imageSourceFolder, ref src);
             if (!RobustFile.Exists(srcPath))
-                return;
+                return null;
             var imgStyle = img.GetAttribute("style");
             if (string.IsNullOrEmpty(imgStyle))
-                return;
+                return null;
             var imgWidth = GetNumberFromPx("width", imgStyle);
             var imgLeft = GetNumberFromPx("left", imgStyle);
             var imgTop = GetNumberFromPx("top", imgStyle);
@@ -1178,13 +1239,13 @@ namespace Bloom.Publish
             var canvasElementWidth = GetNumberFromPx("width", canvasElementStyle);
             var canvasElementHeight = GetNumberFromPx("height", canvasElementStyle);
             if (imgWidth == 0 || canvasElementWidth == 0)
-                return;
+                return null;
             if (!ImageUtils.TryGetImageSize(srcPath, out Size size))
             {
                 Logger.WriteEvent(
                     "Unable to calculate image size for cropping during publication: " + srcPath
                 );
-                return; // can't crop the image if we can't get its size.
+                return null; // can't crop the image if we can't get its size.
             }
             var scale = imgWidth / size.Width;
             var selWidth = canvasElementWidth / scale;
@@ -1204,13 +1265,8 @@ namespace Bloom.Publish
             );
             var result = ImageUtils.CropImage(srcPath, tempPath, cropRectangle);
             if (result.ExitCode == 0)
-            {
-                var destPath = Path.Combine(imageDestFolder, src);
-                RobustFile.Move(tempPath, destPath, true);
-                // If it failed, it should have already logged the reason. I think all we can do
-                // is leave the image alone.
-            }
-            img.RemoveAttribute("style");
+                return tempPath;
+            return null;
         }
 
         internal static double GetNumberFromPx(string label, string input)
@@ -1221,7 +1277,14 @@ namespace Bloom.Publish
                 return 0;
             var number = part.Trim().Substring(label.Length + 1);
             number = number.Substring(0, number.Length - 2); // remove "px"
-            if (double.TryParse(number, out double result))
+            if (
+                double.TryParse(
+                    number,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out double result
+                )
+            )
                 return result;
             return 0;
         }
@@ -1238,7 +1301,11 @@ namespace Bloom.Publish
                 {
                     if (_browser != null) // Don't use BrowserForPageChecks here...if we don't have one we don't want to make it now!
                     {
-                        if (ControlForInvoke != null &&  ControlForInvoke.IsHandleCreated && !ControlForInvoke.IsDisposed)
+                        if (
+                            ControlForInvoke != null
+                            && ControlForInvoke.IsHandleCreated
+                            && !ControlForInvoke.IsDisposed
+                        )
                         {
                             // Seems safest of all to invoke using the thing we use for all other invokes.
                             // Also, seems our WebView2Browser may not actually get a handle, yet its
@@ -1611,26 +1678,133 @@ namespace Bloom.Publish
             return false;
         }
 
-        public static void ReportInvalidFonts(string destDirName, IProgress progress)
+        public static async Task ReportInvalidFontsAsync(
+            string destDirName,
+            IProgress progress,
+            Control controlToInvokeOn
+        )
         {
-            // For ePUB and BloomPub, we display the book to determine exactly which fonts are
-            // actually used.  We don't have a browser available to do that for uploads, so we scan
-            // css files and the styles set in the html file to see what font-family values are present.
-            // There's also the question of multilanguage books having data that isn't actively
-            // displayed but could potentially be displayed.
+            // Make a browser so we can accurately determine what fonts are actually requested by
+            // the stylesheets in the book, or might be if other languages being uploaded are activated.
             HashSet<string> fontsFound = new HashSet<string>();
-            foreach (var filepath in Directory.EnumerateFiles(destDirName, "*.css"))
+            var bookPath = BookStorage.FindBookHtmlInFolder(destDirName);
+            var dom = HtmlDom.CreateFromHtmlFile(bookPath);
+            dom.BaseForRelativePaths = destDirName;
+            foreach (
+                var editable in dom.RawDom.SafeSelectElements(
+                    "//div[contains(@class, 'bloom-editable')]"
+                )
+            )
             {
-                var cssContent = RobustFile.ReadAllText(filepath);
-                HtmlDom.FindFontsUsedInCss(cssContent, fontsFound, includeFallbackFonts: true);
+                // stuff has to be visible for us to compute the font family used for it
+                // We can make all the bloom-editable elements visible, since we already removed
+                // the ones that are not going to be uploaded, and we are not going to use this
+                // DOM for anything else.
+                if (editable.GetAttribute("lang") == "z")
+                    continue; // will never be visible.
+                editable.AddClass("bloom-visibility-code-on");
             }
-            // There should be only one html file with the same name as the directory it's in, but let's
-            // not make any assumptions here.
-            foreach (var filepath in Directory.EnumerateFiles(destDirName, "*.htm"))
+
+            // This function, which is what we want to do next, may be either invoked
+            // or simply run, depending on whether we need to force running it on the UI thread.
+            // We can only manipulate the browser on the UI thread (except in tests).
+            var getFontsAction = async () =>
             {
-                var cssContent = RobustFile.ReadAllText(filepath);
-                HtmlDom.FindFontsUsedInCss(cssContent, fontsFound, includeFallbackFonts: true); // works on HTML files as well
+                // This will usually be the main UI thread, but in tests it could be anything.
+                // In production, we must make sure we're on the UI thread to create and manipulate a browser,
+                // but we may no longer be after we await RunJavaScriptAsync. We have to be on the same
+                // thread to dispose it, so keep track of which thread it is.
+                var threadWhereWeMadeBrowser = Thread.CurrentThread;
+                var browser = await WebView2Browser.CreateAsync();
+                try
+                {
+                    // Logically, if any await can result in a thread switch, we might need to invoke again here.
+                    // But in practice, I haven't observed a problem. Maybe, even though the browser init code
+                    // is async, it somehow stays on the original thread? I'm not inclined to handle such a
+                    // complication unless we need to.
+                    if (
+                        !browser.NavigateAndWaitTillDone(
+                            dom,
+                            10000,
+                            InMemoryHtmlFileSource.JustCheckingPage,
+                            () => false,
+                            false
+                        )
+                    )
+                    {
+                        // We had problems with timeouts here in similar code (BL-7892).
+                        // We may as well carry on and detect as many problem fonts as we can.
+                        Debug.WriteLine("Failed to navigate fully to ReportInvalidFontsAsync DOM");
+                        Logger.WriteEvent(
+                            "Failed to navigate fully to ReportInvalidFontsAsync DOM"
+                        );
+                    }
+
+                    // Get and store the display and font information for each element in the DOM.
+                    var rawInfo = await browser.GetObjectFromJavascriptAsync(
+                        GetElementFontFamilyInfoJavascript
+                    );
+                    var fontFamilyInfo = Newtonsoft.Json.JsonConvert.DeserializeObject<string[]>(
+                        rawInfo
+                    );
+
+                    if (fontFamilyInfo != null)
+                    {
+                        foreach (var family in fontFamilyInfo)
+                        {
+                            var font = ExtractFontNameFromFontFamily(family);
+                            if (!string.IsNullOrEmpty(font))
+                            {
+                                fontsFound.Add(font);
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    if (threadWhereWeMadeBrowser == Thread.CurrentThread)
+                    {
+                        // This seems to happen in tests. In live code, given the bizarre way
+                        // Windows.Forms implements await and resumes on a different thread,
+                        // we don't take this branch, but we normally have a controlToInvokeOn,
+                        // which is usually null in tests.
+                        browser.Dispose();
+                    }
+                    else if (controlToInvokeOn != null)
+                    {
+                        // If we made the browser on this control's thread, we can dispose of it properly by invoking
+                        // to that thread. This is the usual path in production.
+                        controlToInvokeOn.Invoke(() => browser.Dispose());
+                    }
+                    // Otherwise, we just can't dispose of it properly. Probably we're running tests
+                    // and it doesn't matter much.
+                }
+            };
+            if (controlToInvokeOn == null)
+            {
+                await getFontsAction();
             }
+            else
+            {
+                await (Task)controlToInvokeOn.Invoke(getFontsAction);
+            }
+
+            // The old approach. Enhance: this is probably much faster to run. We think its only
+            // problem is false positives. Possibly if it finds no problems, we don't need to run
+            /// the more expensive browser-based approach.
+            //foreach (var filepath in Directory.EnumerateFiles(destDirName, "*.css"))
+            //{
+            //    var cssContent = RobustFile.ReadAllText(filepath);
+            //    HtmlDom.FindFontsUsedInCss(cssContent, fontsFound, includeFallbackFonts: true);
+            //}
+            //// There should be only one html file with the same name as the directory it's in, but let's
+            //// not make any assumptions here.
+            //foreach (var filepath in Directory.EnumerateFiles(destDirName, "*.htm"))
+            //{
+            //    var cssContent = RobustFile.ReadAllText(filepath);
+            //    HtmlDom.FindFontsUsedInCss(cssContent, fontsFound, includeFallbackFonts: true); // works on HTML files as well
+            //}
+
             if (_fontMetadataMap == null)
             {
                 _fontMetadataMap = new Dictionary<string, FontMetadata>();

@@ -966,8 +966,8 @@ namespace Bloom.Edit
                 // Trace memory usage in case it may be useful
                 // First see if we seem to have a problem without taking time (~100ms in a large book/fast computer) to force GC.
                 // If we seem to have a problem do it again forcing the GC and possibly warning the user.
-                if (MemoryManagement.CheckMemory(false, "switched page in edit", false, false))
-                    MemoryManagement.CheckMemory(false, "switched page in edit", true);
+                //if (MemoryManagement.CheckMemory(false, "switched page in edit", false, false))
+                //    MemoryManagement.CheckMemory(false, "switched page in edit", true);
 
                 if (_view != null)
                 {
@@ -1263,6 +1263,7 @@ namespace Bloom.Edit
                 // hint bubbles (especially; BL-12253) will be too constrained.
                 // Subtracting 5px from 100% ensures that we don't have a horizontal scrollbar and leaves a small margin
                 // between the main page and the toolbox.
+                // If this changes, adjust similar code in the TS SetZoom method, currently in editViewFrame.ts.
                 outerDiv.SetAttribute(
                     "style",
                     String.Format(

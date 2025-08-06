@@ -8,11 +8,18 @@ import {
 import { AutoUpdateSoftwareDialog } from "../AutoUpdateSoftwareDialog";
 import { ForumInvitationDialogLauncher } from "../forumInvitationDialog";
 import {
+    INumberChooserDialogProps,
+    NumberChooserDialog
+} from "../numberChooserDialog";
+import { AboutDialogLauncher } from "../aboutDialog";
+import {
     StorybookDialogWrapper,
     normalDialogEnvironmentForStorybook
 } from "../BloomDialog/BloomDialogPlumbing";
 
 import { Meta, StoryObj } from "@storybook/react";
+import { MakeReaderTemplateBloomPackDialog } from "../makeReaderTemplateBloomPackDialog";
+import { RegistrationDialogLauncher } from "../registrationDialog";
 
 const meta: Meta = {
     title: "Misc/Dialogs"
@@ -88,5 +95,43 @@ export const ForumInvitationDialogStory: Story = {
         <StorybookDialogWrapper id="ForumInvitationDialog" params={{}}>
             <ForumInvitationDialogLauncher />
         </StorybookDialogWrapper>
+    )
+};
+
+const numberChooserDialogProps: INumberChooserDialogProps = {
+    min: 2,
+    max: 777,
+    title: "My Random Chooser Title",
+    prompt: "Enter some number from 2 to 777",
+    onClick: num => {
+        console.log(`We chose ${num}.`);
+    },
+    dialogEnvironment: normalDialogEnvironmentForStorybook
+};
+
+export const NumberChooserDialogStory: Story = {
+    name: "NumberChooserDialog",
+    render: () => (
+        <NumberChooserDialog
+            {...numberChooserDialogProps}
+        ></NumberChooserDialog>
+    )
+};
+
+export const AboutDialogStory: Story = {
+    name: "AboutDialog",
+    render: () => (
+        <StorybookDialogWrapper id="AboutDialog" params={{}}>
+            <AboutDialogLauncher />
+        </StorybookDialogWrapper>
+    )
+};
+
+export const MakeReaderTemplateBloomPackDialogStory: Story = {
+    name: "MakeReaderTemplateBloomPackDialog",
+    render: () => (
+        <MakeReaderTemplateBloomPackDialog
+            dialogEnvironment={normalDialogEnvironmentForStorybook}
+        ></MakeReaderTemplateBloomPackDialog>
     )
 };

@@ -2,6 +2,16 @@
 <xliff xmlns="urn:oasis:names:tc:xliff:document:1.2" xmlns:sil="http://sil.org/software/XLiff" xmlns:html="http://www.w3.org/TR/html" version="1.2">
   <file original="Bloom.exe" source-language="en" datatype="plaintext" product-version="3.1.000.0" sil:hard-linebreak-replacement="\n">
     <body>
+      <trans-unit id="AboutDialog.AboutBloom">
+        <source xml:lang="en">About {0}</source>
+        <note>ID: AboutDialog.WindowTitle</note>
+        <note>{0} is the application name</note>
+      </trans-unit>
+      <trans-unit id="AboutDialog.BuiltOnDate">
+        <source xml:lang="en">Built on {0}</source>
+        <note>ID: AboutDialog.BuiltOnDate</note>
+        <note>{0} is the date the application was built</note>
+      </trans-unit>
       <trans-unit id="AccessibilityCheck.AccessibilityChecker" sil:dynamic="true">
         <source xml:lang="en">Accessibility Checker</source>
         <note>ID: AccessibilityCheck.AccessibilityChecker</note>
@@ -598,6 +608,7 @@
       <trans-unit id="CollectionTab.Applying">
         <source xml:lang="en">Applying updates</source>
         <note>ID: CollectionTab.Applying</note>
+        <note>obsolete as of Bloom 6.3</note>
       </trans-unit>
       <trans-unit id="CollectionTab.BloomLibraryLinkLabel">
         <source xml:lang="en">Get more source books at BloomLibrary.org</source>
@@ -770,6 +781,7 @@
       <trans-unit id="CollectionTab.Progress">
         <source xml:lang="en">({0}% complete)</source>
         <note>ID: CollectionTab.Progress</note>
+        <note>obsolete as of Bloom 6.3</note>
       </trans-unit>
       <trans-unit id="CollectionTab.RemoveThisGroup">
         <source xml:lang="en">To remove this group, you will need to delete the folder. Click here to view the folder on your drive.</source>
@@ -836,6 +848,7 @@
       <trans-unit id="CollectionTab.UpdateFailed">
         <source xml:lang="en">A new version appears to be available, but Bloom could not install it.</source>
         <note>ID: CollectionTab.UpdateFailed</note>
+        <note>obsolete as of Bloom 6.3</note>
       </trans-unit>
       <trans-unit id="CollectionTab.UpdateInstalled">
         <source xml:lang="en">Update for {0} is ready</source>
@@ -5179,6 +5192,7 @@ Do you want to go ahead?</note>
       <trans-unit id="ReaderTemplateBloomPackDialog.HelpButtonLabel">
         <source xml:lang="en">Help</source>
         <note>ID: ReaderTemplateBloomPackDialog.HelpButtonLabel</note>
+        <note>Obsolete as of Bloom 6.3</note>
       </trans-unit>
       <trans-unit id="ReaderTemplateBloomPackDialog.IntroLabel">
         <source xml:lang="en">The following books will be made into templates:</source>
@@ -5338,18 +5352,6 @@ Do you want to go ahead?</note>
       <trans-unit id="ReportProblemDialog.SearchOnline">
         <source xml:lang="en">Search online</source>
         <note>ID: ReportProblemDialog.SearchOnline</note>
-      </trans-unit>
-      <trans-unit id="SamplePrintNotification.IGetIt">
-        <source xml:lang="en">I get it. Do not show this again.</source>
-        <note>ID: SamplePrintNotification.IGetIt</note>
-      </trans-unit>
-      <trans-unit id="SamplePrintNotification.PleaseNotice">
-        <source xml:lang="en">Please notice the sample printer settings below. Use them as a guide while you set up the printer.</source>
-        <note>ID: SamplePrintNotification.PleaseNotice</note>
-      </trans-unit>
-      <trans-unit id="SamplePrintNotification.WindowTitle">
-        <source xml:lang="en">Sample Print Settings</source>
-        <note>ID: SamplePrintNotification.WindowTitle</note>
       </trans-unit>
       <trans-unit id="ScriptSettingsDialog.DefaultLineSpacing" sil:dynamic="true">
         <source xml:lang="en">Default line spacing</source>

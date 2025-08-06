@@ -66,6 +66,7 @@ namespace Bloom
             bool justEnoughForHtmlDialog = false
         )
         {
+            Logger.WriteMinorEvent("starting to construct the project context");
             SettingsPath = projectSettingsPath;
 
             _collectionLock = new CollectionLock(SettingsPath);
@@ -164,6 +165,7 @@ namespace Bloom
                                     typeof(SubscriptionSettingsEditorApi),
                                     typeof(FeatureStatusApi),
                                     typeof(CollectionApi),
+                                    typeof(RegistrationApi),
                                     typeof(PageControlsApi),
                                     typeof(ReadersApi),
                                     typeof(PageTemplatesApi),
@@ -372,6 +374,7 @@ namespace Bloom
                 var allCommands = from c in commandTypes select _scope.Resolve(c) as ICommand;
                 _commandAvailabilityPublisher = new CommandAvailabilityPublisher(allCommands);
                 */
+                Logger.WriteMinorEvent("completed initializing project context");
             }
             catch (FileNotFoundException error)
             {
@@ -418,6 +421,7 @@ namespace Bloom
                 .RegisterWithApiHandler(server.ApiHandler);
             _scope.Resolve<FeatureStatusApi>().RegisterWithApiHandler(server.ApiHandler);
             _scope.Resolve<CollectionApi>().RegisterWithApiHandler(server.ApiHandler);
+            _scope.Resolve<RegistrationApi>().RegisterWithApiHandler(server.ApiHandler);
             _scope.Resolve<BookCommandsApi>().RegisterWithApiHandler(server.ApiHandler);
             _scope.Resolve<SpreadsheetApi>().RegisterWithApiHandler(server.ApiHandler);
             _scope.Resolve<PageControlsApi>().RegisterWithApiHandler(server.ApiHandler);
@@ -447,6 +451,7 @@ namespace Bloom
             _scope.Resolve<FontsApi>().RegisterWithApiHandler(server.ApiHandler);
             _scope.Resolve<WorkspaceApi>().RegisterWithApiHandler(server.ApiHandler);
             _scope.Resolve<ExternalApi>().RegisterWithApiHandler(server.ApiHandler);
+            _scope.Resolve<LoggerApi>().RegisterWithApiHandler(server.ApiHandler);
         }
 
         public static string[] SourceRootFolders()
